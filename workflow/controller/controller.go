@@ -39,7 +39,6 @@ import (
 	wfclientset "github.com/argoproj/argo/v2/pkg/client/clientset/versioned"
 	wfextvv1alpha1 "github.com/argoproj/argo/v2/pkg/client/informers/externalversions/workflow/v1alpha1"
 	authutil "github.com/argoproj/argo/v2/util/auth"
-	errorsutil "github.com/argoproj/argo/v2/util/errors"
 	"github.com/argoproj/argo/v2/workflow/common"
 	controllercache "github.com/argoproj/argo/v2/workflow/controller/cache"
 	"github.com/argoproj/argo/v2/workflow/controller/estimation"
@@ -561,12 +560,9 @@ func (wfc *WorkflowController) processNextItem() bool {
 
 	err = wfc.hydrator.Hydrate(woc.wf)
 	if err != nil {
-		transientErr := errorsutil.IsTransientErr(err)
-		woc.log.WithField("transientErr", transientErr).Errorf("hydration failed: %v", err)
-		if !transientErr {
-			woc.markWorkflowError(err)
-			woc.persistUpdates()
-		}
+		woc.log.Errorf("hydration failed: %v", err)
+		woc.markWorkflowError(err)
+		woc.persistUpdates()
 		return true
 	}
 

@@ -384,7 +384,7 @@ func (p *PNSExecutor) GetTerminatedContainerStatus(containerID string) (*corev1.
 	err := wait.ExponentialBackoff(backoffOver30s, func() (bool, error) {
 		podRes, err := p.clientset.CoreV1().Pods(p.namespace).Get(p.podName, metav1.GetOptions{})
 		if err != nil {
-			return !errorsutil.IsTransientErr(err), fmt.Errorf("could not get pod: %w", err)
+			return errorsutil.Done(err)
 		}
 		for _, containerStatusRes := range podRes.Status.ContainerStatuses {
 			if execcommon.GetContainerID(&containerStatusRes) != containerID {
@@ -394,7 +394,7 @@ func (p *PNSExecutor) GetTerminatedContainerStatus(containerID string) (*corev1.
 			containerStatus = &containerStatusRes
 			return containerStatus.State.Terminated != nil, nil
 		}
-		return false, errors.New(errors.CodeNotFound, fmt.Sprintf("containerID %q is not found in the pod %s", containerID, p.podName))
+		return false, nil
 	})
 	return pod, containerStatus, err
 }

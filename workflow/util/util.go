@@ -40,6 +40,7 @@ import (
 	wfclientset "github.com/argoproj/argo/v2/pkg/client/clientset/versioned"
 	"github.com/argoproj/argo/v2/pkg/client/clientset/versioned/typed/workflow/v1alpha1"
 	cmdutil "github.com/argoproj/argo/v2/util/cmd"
+	errorsutil "github.com/argoproj/argo/v2/util/errors"
 	"github.com/argoproj/argo/v2/util/retry"
 	unstructutil "github.com/argoproj/argo/v2/util/unstructured"
 	"github.com/argoproj/argo/v2/workflow/common"
@@ -325,20 +326,18 @@ func SuspendWorkflow(wfIf v1alpha1.WorkflowInterface, workflowName string) error
 	err := wait.ExponentialBackoff(retry.DefaultRetry, func() (bool, error) {
 		wf, err := wfIf.Get(workflowName, metav1.GetOptions{})
 		if err != nil {
-			return false, err
+			return errorsutil.Done(err)
 		}
 		if IsWorkflowCompleted(wf) {
 			return false, errSuspendedCompletedWorkflow
 		}
 		if wf.Spec.Suspend == nil || !*wf.Spec.Suspend {
 			wf.Spec.Suspend = pointer.BoolPtr(true)
-			_, err = wfIf.Update(wf)
-			if err != nil {
-				if apierr.IsConflict(err) {
-					return false, nil
-				}
-				return false, err
+			_, err := wfIf.Update(wf)
+			if apierr.IsConflict(err) {
+				return false, nil
 			}
+			return errorsutil.Done(err)
 		}
 		return true, nil
 	})
@@ -354,7 +353,7 @@ func ResumeWorkflow(wfIf v1alpha1.WorkflowInterface, hydrator hydrator.Interface
 		err := wait.ExponentialBackoff(retry.DefaultRetry, func() (bool, error) {
 			wf, err := wfIf.Get(workflowName, metav1.GetOptions{})
 			if err != nil {
-				return false, err
+				return errorsutil.Done(err)
 			}
 
 			err = hydrator.Hydrate(wf)
@@ -443,7 +442,7 @@ func updateSuspendedNode(wfIf v1alpha1.WorkflowInterface, hydrator hydrator.Inte
 	err = wait.ExponentialBackoff(retry.DefaultRetry, func() (bool, error) {
 		wf, err := wfIf.Get(workflowName, metav1.GetOptions{})
 		if err != nil {
-			return false, err
+			return errorsutil.Done(err)
 		}
 
 		err = hydrator.Hydrate(wf)
@@ -671,7 +670,7 @@ func RetryWorkflow(kubeClient kubernetes.Interface, hydrator hydrator.Interface,
 	err := wait.ExponentialBackoff(retry.DefaultRetry, func() (bool, error) {
 		var err error
 		updated, err = retryWorkflow(kubeClient, hydrator, wfClient, name, restartSuccessful, nodeFieldSelector)
-		return err == nil, err
+		return errorsutil.Done(err)
 	})
 	if err != nil {
 		return nil, err
@@ -858,15 +857,12 @@ func TerminateWorkflow(wfClient v1alpha1.WorkflowInterface, name string) error {
 	if err != nil {
 		return errors.InternalWrapError(err)
 	}
-	_ = wait.ExponentialBackoff(retry.DefaultRetry, func() (bool, error) {
-		_, err = wfClient.Patch(name, types.MergePatchType, patch)
-		if err != nil {
-			if !apierr.IsConflict(err) {
-				return false, err
-			}
+	err = wait.ExponentialBackoff(retry.DefaultRetry, func() (bool, error) {
+		_, err := wfClient.Patch(name, types.MergePatchType, patch)
+		if apierr.IsConflict(err) {
 			return false, nil
 		}
-		return true, nil
+		return errorsutil.Done(err)
 	})
 	return err
 }
