@@ -33,6 +33,7 @@ import (
 	wfv1 "github.com/argoproj/argo/v2/pkg/apis/workflow/v1alpha1"
 	"github.com/argoproj/argo/v2/util"
 	"github.com/argoproj/argo/v2/util/archive"
+	errorsutil "github.com/argoproj/argo/v2/util/errors"
 	"github.com/argoproj/argo/v2/util/retry"
 	artifact "github.com/argoproj/argo/v2/workflow/artifacts"
 	"github.com/argoproj/argo/v2/workflow/common"
@@ -642,14 +643,10 @@ func (we *WorkflowExecutor) InitDriver(art *wfv1.Artifact) (artifact.ArtifactDri
 func (we *WorkflowExecutor) getPod() (*apiv1.Pod, error) {
 	podsIf := we.ClientSet.CoreV1().Pods(we.Namespace)
 	var pod *apiv1.Pod
-	var err error
-	_ = wait.ExponentialBackoff(ExecutorRetry, func() (bool, error) {
+	err := wait.ExponentialBackoff(ExecutorRetry, func() (bool, error) {
+		var err error
 		pod, err = podsIf.Get(we.PodName, metav1.GetOptions{})
-		if err != nil {
-			log.Warnf("Failed to get pod '%s': %v", we.PodName, err)
-			return false, nil
-		}
-		return true, nil
+		return errorsutil.Done(err)
 	})
 	if err != nil {
 		return nil, errors.InternalWrapError(err)
@@ -666,14 +663,10 @@ func (we *WorkflowExecutor) GetConfigMapKey(name, key string) (string, error) {
 	}
 	configmapsIf := we.ClientSet.CoreV1().ConfigMaps(namespace)
 	var configmap *apiv1.ConfigMap
-	var err error
-	_ = wait.ExponentialBackoff(retry.DefaultRetry, func() (bool, error) {
+	err := wait.ExponentialBackoff(retry.DefaultRetry, func() (bool, error) {
+		var err error
 		configmap, err = configmapsIf.Get(name, metav1.GetOptions{})
-		if err != nil {
-			log.Warnf("Failed to get configmap '%s': %v", name, err)
-			return false, nil
-		}
-		return true, nil
+		return errorsutil.Done(err)
 	})
 	if err != nil {
 		return "", errors.InternalWrapError(err)
@@ -698,14 +691,10 @@ func (we *WorkflowExecutor) GetSecrets(namespace, name, key string) ([]byte, err
 	}
 	secretsIf := we.ClientSet.CoreV1().Secrets(namespace)
 	var secret *apiv1.Secret
-	var err error
-	_ = wait.ExponentialBackoff(retry.DefaultRetry, func() (bool, error) {
+	err := wait.ExponentialBackoff(retry.DefaultRetry, func() (bool, error) {
+		var err error
 		secret, err = secretsIf.Get(name, metav1.GetOptions{})
-		if err != nil {
-			log.Warnf("Failed to get secret '%s': %v", name, err)
-			return false, nil
-		}
-		return true, nil
+		return errorsutil.Done(err)
 	})
 	if err != nil {
 		return []byte{}, errors.InternalWrapError(err)
@@ -1038,11 +1027,11 @@ func (we *WorkflowExecutor) Wait() error {
 	annotationUpdatesCh := we.monitorAnnotations(ctx)
 	go we.monitorDeadline(ctx, annotationUpdatesCh)
 
-	_ = wait.ExponentialBackoff(ExecutorRetry, func() (bool, error) {
-		err = we.RuntimeExecutor.Wait(mainContainerID)
+	err = wait.ExponentialBackoff(ExecutorRetry, func() (bool, error) {
+		err := we.RuntimeExecutor.Wait(mainContainerID)
 		if err != nil {
 			log.Warnf("Failed to wait for container id '%s': %v", mainContainerID, err)
-			return false, err
+			return false, nil
 		}
 		return true, nil
 	})
@@ -1062,16 +1051,12 @@ func (we *WorkflowExecutor) waitMainContainerStart() (string, error) {
 			FieldSelector: fieldSelector.String(),
 		}
 
-		var err error
 		var watchIf watch.Interface
 
-		err = wait.ExponentialBackoff(ExecutorRetry, func() (bool, error) {
+		err := wait.ExponentialBackoff(ExecutorRetry, func() (bool, error) {
+			var err error
 			watchIf, err = podsIf.Watch(opts)
-			if err != nil {
-				log.Debugf("Failed to establish watch, retrying: %v", err)
-				return false, nil
-			}
-			return true, nil
+			return errorsutil.Done(err)
 		})
 		if err != nil {
 			return "", errors.InternalWrapErrorf(err, "Failed to establish pod watch: %v", err)

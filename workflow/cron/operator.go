@@ -18,7 +18,7 @@ import (
 	"github.com/argoproj/argo/v2/pkg/apis/workflow/v1alpha1"
 	"github.com/argoproj/argo/v2/pkg/client/clientset/versioned"
 	typed "github.com/argoproj/argo/v2/pkg/client/clientset/versioned/typed/workflow/v1alpha1"
-	argoerr "github.com/argoproj/argo/v2/util/errors"
+	errorsutil "github.com/argoproj/argo/v2/util/errors"
 	"github.com/argoproj/argo/v2/workflow/common"
 	"github.com/argoproj/argo/v2/workflow/metrics"
 	"github.com/argoproj/argo/v2/workflow/templateresolution"
@@ -141,10 +141,7 @@ func (woc *cronWfOperationCtx) patch(patch map[string]interface{}) {
 	err = wait.ExponentialBackoff(retry.DefaultBackoff, func() (bool, error) {
 		cronWf, err := woc.cronWfIf.Patch(woc.cronWf.Name, types.MergePatchType, data)
 		if err != nil {
-			if argoerr.IsTransientErr(err) {
-				return false, nil
-			}
-			return false, err
+			return errorsutil.Done(err)
 		}
 		woc.cronWf = cronWf
 		return true, nil

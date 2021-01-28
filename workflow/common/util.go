@@ -30,6 +30,7 @@ import (
 	"github.com/argoproj/argo/v2/pkg/apis/workflow"
 	wfv1 "github.com/argoproj/argo/v2/pkg/apis/workflow/v1alpha1"
 	"github.com/argoproj/argo/v2/util"
+	errorsutil "github.com/argoproj/argo/v2/util/errors"
 )
 
 // FindOverlappingVolume looks an artifact path, checks if it overlaps with any
@@ -480,8 +481,8 @@ func addPodMetadata(c kubernetes.Interface, field, podName, namespace, key, valu
 		return errors.InternalWrapError(err)
 	}
 	return wait.ExponentialBackoff(backoff, func() (bool, error) {
-		_, err = c.CoreV1().Pods(namespace).Patch(podName, types.MergePatchType, patch)
-		return err == nil, err
+		_, err := c.CoreV1().Pods(namespace).Patch(podName, types.MergePatchType, patch)
+		return errorsutil.Done(err)
 	})
 }
 
