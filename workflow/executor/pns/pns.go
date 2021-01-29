@@ -22,6 +22,7 @@ import (
 	"github.com/argoproj/argo/v2/errors"
 	"github.com/argoproj/argo/v2/util/archive"
 	errorsutil "github.com/argoproj/argo/v2/util/errors"
+	waitutil "github.com/argoproj/argo/v2/util/wait"
 	"github.com/argoproj/argo/v2/workflow/common"
 	execcommon "github.com/argoproj/argo/v2/workflow/executor/common"
 	argowait "github.com/argoproj/argo/v2/workflow/executor/common/wait"
@@ -381,10 +382,10 @@ func (p *PNSExecutor) GetTerminatedContainerStatus(containerID string) (*corev1.
 	var containerStatus *corev1.ContainerStatus
 	// Under high load, the Kubernetes API may be unresponsive for some time (30s). This would have failed the workflow
 	// previously (<=v2.11) but a 30s back-off mitigates this.
-	err := wait.ExponentialBackoff(backoffOver30s, func() (bool, error) {
+	err := waitutil.Backoff(backoffOver30s, func() (bool, error) {
 		podRes, err := p.clientset.CoreV1().Pods(p.namespace).Get(p.podName, metav1.GetOptions{})
 		if err != nil {
-			return errorsutil.Done(err)
+			return !errorsutil.IsTransientErr(err), err
 		}
 		for _, containerStatusRes := range podRes.Status.ContainerStatuses {
 			if execcommon.GetContainerID(&containerStatusRes) != containerID {

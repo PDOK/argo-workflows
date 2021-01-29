@@ -12,13 +12,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 
 	"github.com/argoproj/argo/v2/pkg/apis/workflow/v1alpha1"
 	"github.com/argoproj/argo/v2/pkg/client/clientset/versioned"
 	typed "github.com/argoproj/argo/v2/pkg/client/clientset/versioned/typed/workflow/v1alpha1"
 	errorsutil "github.com/argoproj/argo/v2/util/errors"
+	waitutil "github.com/argoproj/argo/v2/util/wait"
 	"github.com/argoproj/argo/v2/workflow/common"
 	"github.com/argoproj/argo/v2/workflow/metrics"
 	"github.com/argoproj/argo/v2/workflow/templateresolution"
@@ -138,10 +138,10 @@ func (woc *cronWfOperationCtx) patch(patch map[string]interface{}) {
 		woc.log.WithError(err).Error("failed to marshall cron workflow status.active data")
 		return
 	}
-	err = wait.ExponentialBackoff(retry.DefaultBackoff, func() (bool, error) {
+	err = waitutil.Backoff(retry.DefaultBackoff, func() (bool, error) {
 		cronWf, err := woc.cronWfIf.Patch(woc.cronWf.Name, types.MergePatchType, data)
 		if err != nil {
-			return errorsutil.Done(err)
+			return !errorsutil.IsTransientErr(err), err
 		}
 		woc.cronWf = cronWf
 		return true, nil
