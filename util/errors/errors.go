@@ -71,6 +71,9 @@ func isTransientNetworkErr(err error) bool {
 			} else if strings.Contains(err.Error(), "connection timed out") {
 				// If err is a net.Dial timeout, retry.
 				return true
+			} else if strings.Contains(err.Error(), "network is unreachable") {
+				// If err is a net.Dial unreachable, retry.
+				return true
 			}
 		}
 	}
