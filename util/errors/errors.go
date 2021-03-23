@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strings"
 
+	log "github.com/sirupsen/logrus"
+
 	apierr "k8s.io/apimachinery/pkg/api/errors"
 
 	argoerrs "github.com/argoproj/argo/v2/errors"
@@ -15,7 +17,30 @@ func IsTransientErr(err error) bool {
 		return false
 	}
 	err = argoerrs.Cause(err)
-	return isExceededQuotaErr(err) || apierr.IsTooManyRequests(err) || isResourceQuotaConflictErr(err) || isTransientNetworkErr(err)
+
+	if (isExceededQuotaErr(err)) {
+		log.Infof("Quota Exceeded")
+		return true
+	}
+
+	if (apierr.IsTooManyRequests(err)) {
+		log.Infof("Too Many Requests")
+		return true
+	}
+
+	if (isResourceQuotaConflictErr(err)) {
+		log.Infof("Resource Quota Conflict")
+		return true
+	}
+
+	if (isTransientNetworkErr(err)) {
+		log.Infof("Transient Network Error")
+		return true
+	}
+
+	log.Errorf("Non Transient Error: %v", err)
+
+	return false
 }
 
 func isExceededQuotaErr(err error) bool {
