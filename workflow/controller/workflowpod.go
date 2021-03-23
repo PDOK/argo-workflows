@@ -25,6 +25,8 @@ import (
 	"github.com/argoproj/argo/v2/util/intstr"
 	"github.com/argoproj/argo/v2/workflow/common"
 	"github.com/argoproj/argo/v2/workflow/util"
+	"github.com/argoproj/argo/v2/util/retry"
+	waitutil "github.com/argoproj/argo/v2/util/wait"
 )
 
 // Reusable k8s pod spec portions used in workflow pods
@@ -381,17 +383,24 @@ func (woc *wfOperationCtx) createWorkflowPod(nodeName string, mainCtr apiv1.Cont
 		pod.Spec.ActiveDeadlineSeconds = &newActiveDeadlineSeconds
 	}
 
-	created, err := woc.controller.kubeclientset.CoreV1().Pods(woc.wf.ObjectMeta.Namespace).Create(pod)
+	woc.log.Debugf("Creating Pod: %s (%s)", nodeName, nodeID)
+
+	var created *apiv1.Pod
+	err = waitutil.Backoff(retry.DefaultRetry, func() (bool, error) {
+		var err error
+		created, err = woc.controller.kubeclientset.CoreV1().Pods(woc.wf.ObjectMeta.Namespace).Create(pod)
+		if err != nil {
+			if apierr.IsAlreadyExists(err) {
+	                        // workflow pod names are deterministic. We can get here if the
+		                // controller fails to persist the workflow after creating the pod.
+				woc.log.Infof("Failed pod %s (%s) creation: already exists", nodeName, nodeID)
+				return true, nil
+			}
+		}
+
+		return !errorsutil.IsTransientErr(err), err
+	})
 	if err != nil {
-		if apierr.IsAlreadyExists(err) {
-			// workflow pod names are deterministic. We can get here if the
-			// controller fails to persist the workflow after creating the pod.
-			woc.log.Infof("Failed pod %s (%s) creation: already exists", nodeName, nodeID)
-			return created, nil
-		}
-		if errorsutil.IsTransientErr(err) {
-			return nil, err
-		}
 		woc.log.Infof("Failed to create pod %s (%s): %v", nodeName, nodeID, err)
 		return nil, errors.InternalWrapError(err)
 	}
