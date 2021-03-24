@@ -61,10 +61,16 @@ func isTransientNetworkErr(err error) bool {
 			log.Infof("Network error")
 			return true
 		case *url.Error:
-			// For a URL error, where it replies back "connection closed"
-			// retry again.
 			if (strings.Contains(err.Error(), "Connection closed by foreign host")) {
+				// For a URL error, where it replies back "connection closed"
+				// retry again.
 				log.Infof("Connection closed by foreign host")
+				return true
+			} else if strings.Contains(err.Error(), "network is unreachable") {
+				log.Infof("network is unreachable")
+				return true
+			} else if strings.Contains(err.Error(), "connection reset by peer") {
+				log.Infof("connection reset by peer")
 				return true
 			}
 		default:
