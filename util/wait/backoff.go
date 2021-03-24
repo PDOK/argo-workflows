@@ -15,7 +15,7 @@ func Backoff(b wait.Backoff, f func() (bool, error)) error {
 
 	retryCount := 0
 	waitErr := wait.ExponentialBackoff(b, func() (bool, error) {
-		if (retryCount > 1) {
+		if (retryCount > 0) {
 			log.Infof("Retrying ... (%d)", retryCount)
 		}
 		retryCount++
