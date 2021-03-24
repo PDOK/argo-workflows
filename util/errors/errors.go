@@ -18,6 +18,8 @@ func IsTransientErr(err error) bool {
 	}
 	err = argoerrs.Cause(err)
 
+	log.Infof("IsTransientErr? %T", err)
+
 	if (isExceededQuotaErr(err)) {
 		log.Infof("Quota Exceeded")
 		return true
@@ -56,23 +58,33 @@ func isTransientNetworkErr(err error) bool {
 	case net.Error:
 		switch err.(type) {
 		case *net.DNSError, *net.OpError, net.UnknownNetworkError:
+			log.Infof("Network error")
 			return true
 		case *url.Error:
 			// For a URL error, where it replies back "connection closed"
 			// retry again.
-			return strings.Contains(err.Error(), "Connection closed by foreign host")
+			if (strings.Contains(err.Error(), "Connection closed by foreign host")) {
+				log.Infof("Connection closed by foreign host")
+				return true
+			}
 		default:
 			if strings.Contains(err.Error(), "net/http: TLS handshake timeout") {
 				// If error is - tlsHandshakeTimeoutError, retry.
+				log.Infof("TLS handshake timeout")
 				return true
 			} else if strings.Contains(err.Error(), "i/o timeout") {
 				// If error is - tcp timeoutError, retry.
+				log.Infof("i/o timeout")
 				return true
 			} else if strings.Contains(err.Error(), "connection timed out") {
 				// If err is a net.Dial timeout, retry.
+				log.Infof("connection timed out")
 				return true
 			}
+
+			log.Errorf("Non Transient Network Error: %v", err)
 		}
 	}
+
 	return false
 }
