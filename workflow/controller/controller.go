@@ -544,6 +544,7 @@ func (wfc *WorkflowController) workflowGarbageCollector(stopCh <-chan struct{}) 
 					continue
 				}
 				for _, wf := range workflows {
+					log.WithFields(log.Fields{"uid": wf.UID, "version": wf.Status.OffloadNodeStatusVersion}).Info("Processing workflow")
 					// this could be the empty string - as it is no longer offloaded
 					liveOffloadNodeStatusVersions[wf.UID] = wf.Status.OffloadNodeStatusVersion
 				}
@@ -551,11 +552,15 @@ func (wfc *WorkflowController) workflowGarbageCollector(stopCh <-chan struct{}) 
 				for _, record := range oldRecords {
 					// this could be empty string
 					nodeStatusVersion, ok := liveOffloadNodeStatusVersions[types.UID(record.UID)]
+					logFields := log.Fields{"ok": ok, "k8s_version": nodeStatusVersion, "db_version": record.Version}
 					if !ok || nodeStatusVersion != record.Version {
+						log.WithFields(logFields).Info("Deleting node status from db")
 						err := wfc.offloadNodeStatusRepo.Delete(record.UID, record.Version)
 						if err != nil {
 							log.WithField("err", err).Error("Failed to delete offloaded nodes")
 						}
+					} else {
+						log.WithFields(logFields).Info("Keeping node status")
 					}
 				}
 			}
