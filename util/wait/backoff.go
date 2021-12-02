@@ -2,6 +2,7 @@ package wait
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/runtime"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 )
@@ -12,6 +13,7 @@ func Backoff(b wait.Backoff, f func() (bool, error)) error {
 	var err error
 	waitErr := wait.ExponentialBackoff(b, func() (bool, error) {
 		var done bool
+		defer runtime.HandleCrash(runtime.PanicHandlers...)
 		done, err = f()
 		return done, nil
 	})
