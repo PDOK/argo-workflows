@@ -3,21 +3,22 @@ package s3
 import (
 	"context"
 	"fmt"
+	"github.com/argoproj/argo-workflows/v3/errors"
+	wfv1 "github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
+	waitutil "github.com/argoproj/argo-workflows/v3/util/wait"
+	artifactscommon "github.com/argoproj/argo-workflows/v3/workflow/artifacts/common"
+	"github.com/argoproj/argo-workflows/v3/workflow/common"
 	"os"
 	"time"
+
+	"k8s.io/apimachinery/pkg/util/wait"
+
+	envutil "github.com/argoproj/argo-workflows/v3/util/env"
 
 	"github.com/argoproj/pkg/file"
 	argos3 "github.com/argoproj/pkg/s3"
 	"github.com/minio/minio-go/v7"
 	log "github.com/sirupsen/logrus"
-	"k8s.io/apimachinery/pkg/util/wait"
-
-	"github.com/argoproj/argo-workflows/v3/errors"
-	wfv1 "github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
-	envutil "github.com/argoproj/argo-workflows/v3/util/env"
-	waitutil "github.com/argoproj/argo-workflows/v3/util/wait"
-	artifactscommon "github.com/argoproj/argo-workflows/v3/workflow/artifacts/common"
-	"github.com/argoproj/argo-workflows/v3/workflow/common"
 )
 
 // ArtifactDriver is a driver for AWS S3
@@ -37,12 +38,19 @@ type ArtifactDriver struct {
 }
 
 var (
-	_            artifactscommon.ArtifactDriver = &ArtifactDriver{}
-	defaultRetry                                = wait.Backoff{
-		Steps:    envutil.LookupEnvIntOr("RETRY_BACKOFF_STEPS", 5),
-		Duration: envutil.LookupEnvDurationOr("RETRY_BACKOFF_DURATION", time.Second*2),
-		Factor:   envutil.LookupEnvFloatOr("RETRY_BACKOFF_FACTOR", 2.0),
-		Jitter:   0.1,
+	_ artifactscommon.ArtifactDriver = &ArtifactDriver{}
+	// S3Retry is a retry backoff setting for S3 Transient Errors.
+	// Run	Seconds
+	// 0	0.000
+	// 1	1.000
+	// 2	2.600
+	// 3	5.160
+	// 4	9.256
+	S3Retry = wait.Backoff{
+		Steps:    envutil.LookupEnvIntOr("S3_RETRY_BACKOFF_STEPS", 5),
+		Duration: envutil.LookupEnvDurationOr("S3_RETRY_BACKOFF_DURATION", time.Second*1),
+		Factor:   envutil.LookupEnvFloatOr("S3_RETRY_BACKOFF_FACTOR", 1.6),
+		Jitter:   envutil.LookupEnvFloatOr("S3_RETRY_BACKOFF_JITTER", 0.5),
 	}
 )
 
@@ -73,7 +81,7 @@ func (s3Driver *ArtifactDriver) Load(inputArtifact *wfv1.Artifact, path string) 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := waitutil.Backoff(defaultRetry,
+	err := waitutil.Backoff(S3Retry,
 		func() (bool, error) {
 			log.Infof("S3 Load path: %s, key: %s", path, inputArtifact.S3.Key)
 			s3cli, err := s3Driver.newS3Client(ctx)
@@ -118,7 +126,7 @@ func (s3Driver *ArtifactDriver) Save(path string, outputArtifact *wfv1.Artifact)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := waitutil.Backoff(defaultRetry,
+	err := waitutil.Backoff(S3Retry,
 		func() (bool, error) {
 			log.Infof("S3 Save path: %s, key: %s", path, outputArtifact.S3.Key)
 			s3cli, err := s3Driver.newS3Client(ctx)
@@ -168,7 +176,7 @@ func (s3Driver *ArtifactDriver) ListObjects(artifact *wfv1.Artifact) ([]string, 
 	defer cancel()
 
 	var files []string
-	err := waitutil.Backoff(defaultRetry,
+	err := waitutil.Backoff(S3Retry,
 		func() (bool, error) {
 			s3cli, err := s3Driver.newS3Client(ctx)
 			if err != nil {
