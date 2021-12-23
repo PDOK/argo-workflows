@@ -3,22 +3,21 @@ package s3
 import (
 	"context"
 	"fmt"
+	"os"
+	"time"
+
+	"github.com/argoproj/pkg/env"
+	"github.com/argoproj/pkg/file"
+	argos3 "github.com/argoproj/pkg/s3"
+	"github.com/minio/minio-go/v7"
+	log "github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/util/wait"
+
 	"github.com/argoproj/argo-workflows/v3/errors"
 	wfv1 "github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
 	waitutil "github.com/argoproj/argo-workflows/v3/util/wait"
 	artifactscommon "github.com/argoproj/argo-workflows/v3/workflow/artifacts/common"
 	"github.com/argoproj/argo-workflows/v3/workflow/common"
-	"os"
-	"time"
-
-	"k8s.io/apimachinery/pkg/util/wait"
-
-	envutil "github.com/argoproj/argo-workflows/v3/util/env"
-
-	"github.com/argoproj/pkg/file"
-	argos3 "github.com/argoproj/pkg/s3"
-	"github.com/minio/minio-go/v7"
-	log "github.com/sirupsen/logrus"
 )
 
 // ArtifactDriver is a driver for AWS S3
@@ -38,7 +37,11 @@ type ArtifactDriver struct {
 }
 
 var (
-	_ artifactscommon.ArtifactDriver = &ArtifactDriver{}
+	_        artifactscommon.ArtifactDriver = &ArtifactDriver{}
+	steps                                   = env.LookupEnvIntOr("S3_RETRY_BACKOFF_STEPS", 5)
+	duration                                = env.LookupEnvDurationOr("S3_RETRY_BACKOFF_DURATION", 1*time.Second)
+	factor                                  = env.LookupEnvFloatOr("S3_RETRY_BACKOFF_FACTOR", 1.6)
+	jitter                                  = env.LookupEnvFloatOr("S3_RETRY_BACKOFF_JITTER", 0.5)
 	// S3Retry is a retry backoff setting for S3 Transient Errors.
 	// Run	Seconds
 	// 0	0.000
@@ -46,13 +49,12 @@ var (
 	// 2	2.600
 	// 3	5.160
 	// 4	9.256
-	S3Retry = wait.Backoff{
-		Steps:    envutil.LookupEnvIntOr("S3_RETRY_BACKOFF_STEPS", 5),
-		Duration: envutil.LookupEnvDurationOr("S3_RETRY_BACKOFF_DURATION", time.Second*1),
-		Factor:   envutil.LookupEnvFloatOr("S3_RETRY_BACKOFF_FACTOR", 1.6),
-		Jitter:   envutil.LookupEnvFloatOr("S3_RETRY_BACKOFF_JITTER", 0.5),
-	}
+	S3Retry = wait.Backoff{Steps: steps, Duration: duration, Factor: factor, Jitter: jitter}
 )
+
+func init() {
+	log.WithFields(log.Fields{"steps": steps, "duration": duration, "factor": factor, "jitter": jitter}).Info("Executor retry set")
+}
 
 // newMinioClient instantiates a new minio client object.
 func (s3Driver *ArtifactDriver) newS3Client(ctx context.Context) (argos3.S3Client, error) {
