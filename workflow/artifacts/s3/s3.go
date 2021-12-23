@@ -53,7 +53,7 @@ var (
 )
 
 func init() {
-	log.WithFields(log.Fields{"steps": steps, "duration": duration, "factor": factor, "jitter": jitter}).Info("Executor retry set")
+	log.WithFields(log.Fields{"steps": steps, "duration": duration, "factor": factor, "jitter": jitter}).Info("S3 retry set")
 }
 
 // newMinioClient instantiates a new minio client object.
